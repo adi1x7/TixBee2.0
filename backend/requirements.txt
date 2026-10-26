@@ -1,0 +1,17 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlalchemy>=2.0
+alembic>=1.13
+psycopg[binary]>=3.2
+pydantic-settings>=2.4
+passlib[bcrypt]>=1.7
+# Passlib 1.7.4 reads bcrypt's legacy version metadata; 4.0.1 retains it.
+bcrypt==4.0.1
+PyJWT>=2.9
+email-validator>=2.2
+redis>=5.0
+google-genai>=1.0
+qrcode[pil]>=7.4
+python-multipart>=0.0.9
+pytest>=8.3
+httpx>=0.27

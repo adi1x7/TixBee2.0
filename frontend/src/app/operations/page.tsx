@@ -1,0 +1,25 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { getManagedSlots, getOperations, login, redeemTicket, updateManagedSlot, type ManagedSlot, type Session } from "@/lib/api";
+
+type Summary = { issued: number; redeemed: number; confirmed_bookings: number };
+
+export default function OperationsPage() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [slots, setSlots] = useState<ManagedSlot[]>([]);
+  const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
+  const [ticketCode, setTicketCode] = useState(""); const [notice, setNotice] = useState(""); const [busy, setBusy] = useState(false);
+
+  async function refresh(active: Session) {
+    setSummary(await getOperations(active.access_token));
+    if (active.user.role === "admin") setSlots(await getManagedSlots(active.access_token));
+  }
+  useEffect(() => { const raw = window.localStorage.getItem("tixbee-session"); if (!raw) return; const active = JSON.parse(raw) as Session; if (["staff", "admin"].includes(active.user.role)) { setSession(active); refresh(active).catch((error) => setNotice(error instanceof Error ? error.message : "Unable to load operations.")); } }, []);
+  async function signIn(event: React.FormEvent) { event.preventDefault(); setBusy(true); setNotice(""); try { const active = await login(email, password); if (!["staff", "admin"].includes(active.user.role)) throw new Error("This account does not have operations access."); window.localStorage.setItem("tixbee-session", JSON.stringify(active)); setSession(active); await refresh(active); } catch (error) { setNotice(error instanceof Error ? error.message : "Unable to sign in."); } finally { setBusy(false); } }
+  async function redeem(event: React.FormEvent) { event.preventDefault(); if (!session) return; setBusy(true); setNotice(""); try { const result = await redeemTicket(ticketCode.trim(), session.access_token); setTicketCode(""); setNotice(`${result.ticket_code} redeemed successfully.`); await refresh(session); } catch (error) { setNotice(error instanceof Error ? error.message : "Unable to redeem ticket."); } finally { setBusy(false); } }
+  async function editSlot(slot: ManagedSlot, change: { capacity?: number; is_active?: boolean }) { if (!session) return; setBusy(true); setNotice(""); try { const updated = await updateManagedSlot(slot.id, change, session.access_token); setSlots((current) => current.map((item) => item.id === updated.id ? updated : item)); setNotice(`Updated ${updated.attraction_name}.`); } catch (error) { setNotice(error instanceof Error ? error.message : "Unable to update visit slot."); } finally { setBusy(false); } }
+  return <main className="bookings-page"><nav className="site-nav shell"><Link className="brand" href="/"><span className="brand-mark">T</span>TixBee</Link><span className="back-link">Venue operations</span></nav><section className="shell bookings-shell"><p className="kicker">Role protected workspace</p><h1>Ticket desk</h1>{!session ? <form className="staff-login" onSubmit={signIn}><label>Staff or admin email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label><button className="primary-link" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form> : null}{notice ? <div className="message-box">{notice}</div> : null}{summary ? <div className="ops-grid"><div><b>{summary.issued}</b><span>Issued tickets</span></div><div><b>{summary.redeemed}</b><span>Redeemed tickets</span></div><div><b>{summary.confirmed_bookings}</b><span>Confirmed bookings</span></div></div> : null}{session ? <form className="redeem-form" onSubmit={redeem}><label>Ticket code<input value={ticketCode} onChange={(event) => setTicketCode(event.target.value)} placeholder="TIX-…" required /></label><button className="primary-link" disabled={busy}>Redeem ticket</button></form> : null}{session?.user.role === "admin" ? <section className="slot-manager"><p className="kicker">Administrator controls</p><h2>Visit slot capacity</h2><p>Capacity cannot fall below places already held or booked.</p><div className="slot-list-admin">{slots.slice(0, 12).map((slot) => <article key={slot.id}><div><strong>{slot.attraction_name}</strong><span>{slot.visit_date} · {slot.start_time.slice(0, 5)}–{slot.end_time.slice(0, 5)}</span><small>{slot.remaining_capacity} of {slot.capacity} places available</small></div><label>Capacity<input type="number" min={slot.capacity - slot.remaining_capacity} max="500" defaultValue={slot.capacity} onBlur={(event) => { const capacity = Number(event.target.value); if (capacity !== slot.capacity) editSlot(slot, { capacity }); }} /></label><button type="button" onClick={() => editSlot(slot, { is_active: !slot.is_active })} disabled={busy}>{slot.is_active ? "Close slot" : "Open slot"}</button></article>)}</div></section> : null}</section></main>;
+}
