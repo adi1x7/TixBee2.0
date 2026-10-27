@@ -13,7 +13,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("tickets", sa.Column("email_delivery_status", sa.String(length=24), nullable=False, server_default="PENDING"))
+    # Revision 01 originally used the current SQLAlchemy metadata to create the
+    # initial schema. On a new database that metadata already contains this
+    # column, so only add it when upgrading an older database.
+    columns = {column["name"] for column in sa.inspect(op.get_bind()).get_columns("tickets")}
+    if "email_delivery_status" not in columns:
+        op.add_column("tickets", sa.Column("email_delivery_status", sa.String(length=24), nullable=False, server_default="PENDING"))
 
 
 def downgrade() -> None:

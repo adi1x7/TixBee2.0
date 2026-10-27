@@ -1,259 +1,208 @@
-# TixBee
+# TixBee 2.0
 
-TixBee is a full-stack ticket-booking application for museums, heritage sites,
-galleries, and other cultural attractions. It gives visitors one flow for
-discovering a venue, selecting a timed visit, reserving capacity, completing a
-local payment simulation, receiving a signed QR ticket, and checking in at the
-venue. The application also gives staff a protected ticket desk and gives
-administrators protected controls for visit-slot capacity.
+TixBee is a full-stack ticket-booking application for museums, heritage sites, galleries, and cultural attractions. Built as an academic project, it demonstrates attraction discovery, timed-slot booking, QR ticket delivery, booking management, and venue operations.
 
-The project is designed as a modular monolith: one Next.js frontend, one FastAPI
-application, and PostgreSQL as the authoritative record for booking state.
+> **Academic-demo notice:** The UPI QR checkout is an amount-specific demonstration flow. It does not verify a real payment and must not be used for commercial ticket sales without a verified payment-provider integration.
 
-## Implemented capabilities
+## Features
 
-### Visitor and customer journey
+### Customer booking journey
 
-- Browse published attractions by city, category, or name.
-- View attraction details, facilities, visitor rules, FAQs, ticket types, and
-  available timed slots.
-- Register and sign in with email and password.
-- Create a backend-priced reservation with a ten-minute capacity hold.
-- Complete a no-money local payment simulation that confirms the booking.
-- Receive a unique booking reference and signed QR ticket.
-- View booking history and display the QR ticket.
-- Cancel an unpaid held reservation and restore its reserved capacity.
+- Browse 16 attractions across Bengaluru, Delhi, Kolkata, and Mumbai.
+- Search and filter by city, category, or attraction name.
+- View attraction images, descriptions, opening hours, facilities, visitor rules, FAQs, ticket prices, and visit slots.
+- Register, sign in, sign out, and reset a forgotten password.
+- Reserve capacity using backend-calculated pricing and a 10-minute booking hold.
+- Display an amount-specific UPI QR in the checkout demonstration.
+- Receive a signed QR ticket and optional confirmation email with visit details, ticket quantities, amount, ticket ID, and QR code.
+- Access booking history and QR passes through **My bookings**.
+- Cancel an eligible confirmed booking up to 24 hours before the visit; the application records a 50% refund as pending and sends an optional cancellation email.
 
-### Venue operations
+### Operations
 
-- Authenticate staff and administrator users with role-protected API endpoints.
-- View issued, redeemed, and confirmed-booking totals.
-- Redeem a ticket exactly once. A repeat redemption returns a conflict response.
-- Let administrators view visit slots, close or reopen slots, and change a
-  slot's capacity without dropping below already reserved places.
+- Role-protected customer, staff, and administrator accounts.
+- Staff access limited to one assigned attraction; administrator access across all sites.
+- Validate signed QR tickets and redeem a ticket only once.
+- View issued, redeemed, and confirmed-booking activity metrics.
+- Manage visit-slot capacity and availability grouped by attraction and date.
+- View a role-scoped customer directory with account and booking summaries.
 
-### Reliability and security controls
+### TixBee Concierge
 
-- Bcrypt password hashing and signed JWT sessions.
-- Backend role checks for customer, staff, and administrator operations.
-- Row-level locking for booking holds, staff redemption, and capacity updates.
-- Server-side price calculation and immutable booking-item price snapshots.
-- PostgreSQL persistence for users, attractions, slots, bookings, payments,
-  tickets, and chat messages.
-- Alembic migrations for schema versioning.
-- Docker Compose for repeatable local services.
-
-## Current scope boundaries
-
-TixBee includes configuration fields and module boundaries for Gemini, Razorpay,
-SMTP, and Redis. The locally demonstrated workflow intentionally uses the
-in-process payment simulator instead of a live Razorpay order/webhook flow.
-Live Gemini responses, payment webhooks, refunds, email-provider delivery, and
-full attraction-content administration are future extensions rather than
-completed features. No real money is collected.
+- Gemini-powered assistance for attraction discovery, ticket guidance, facilities, rules, FAQs, and visit planning.
+- Signed-in customer booking questions are answered directly from TixBee data, so private booking details are not sent to Gemini.
+- Compact attraction/city context and a low-latency Gemini Flash model keep responses quick.
 
 ## Technology stack
 
-| Area | Technology |
+| Layer | Technology |
 | --- | --- |
 | Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS |
 | Backend | Python 3.12, FastAPI, Pydantic |
 | Data | PostgreSQL 16, SQLAlchemy 2, Alembic |
-| Authentication | Bcrypt, JWT bearer sessions, role-based authorization |
-| Ticketing | Signed JWT QR payloads, `qrcode` SVG generation |
-| Local services | Docker Compose, PostgreSQL, Redis |
-| Optional integrations | Gemini API, Razorpay Test Mode, SMTP |
-| Quality tooling | Pytest, Next.js production build, FastAPI OpenAPI docs |
+| Authentication | Bcrypt, JWT bearer sessions, role-based access control |
+| Ticketing | Signed JWT ticket payloads and SVG QR codes |
+| AI | Google Gemini API (gemini-3.5-flash-lite) |
+| Local runtime | Docker Compose, PostgreSQL, Redis |
 
 ## Architecture
 
-```text
+~~~text
 Browser
-  │
-  ▼
-Next.js frontend (port 3001)
-  │  REST + bearer token
-  ▼
-FastAPI application (port 8000)
-  ├── Authentication and roles
-  ├── Attraction catalog and slots
-  ├── Booking holds and price snapshots
-  ├── Demo payment and QR tickets
-  ├── Staff redemption and admin operations
-  └── Optional concierge integration
-  │
-  ▼
-PostgreSQL (authoritative records)     Redis (reserved for short-lived state)
-```
+  |
+  v
+Next.js frontend :3001
+  |
+  | REST API + bearer token
+  v
+FastAPI backend :8000
+  |- identity and password recovery
+  |- attraction catalogue and slots
+  |- booking holds and price snapshots
+  |- UPI-QR demonstration checkout and tickets
+  |- email, cancellation, operations, and Concierge
+  |
+  v
+PostgreSQL : authoritative records
+~~~
 
-### Backend modules
-
-```text
-backend/app/
-├── core/        # configuration, database session, JWT and password security
-├── models/      # SQLAlchemy domain entities
-├── routers/     # HTTP endpoints grouped by capability
-├── schemas/     # request and response validation models
-└── services/    # catalog seeding, email adapter, concierge adapter
-```
-
-### Core data model
-
-| Entity | Responsibility |
-| --- | --- |
-| `users` | Customer, staff, and administrator accounts |
-| `attractions` | Published venue information |
-| `time_slots` | Visit time, total capacity, and remaining capacity |
-| `ticket_types` | Adult, student, and child ticket pricing |
-| `bookings` and `booking_items` | Reservation status and preserved price snapshot |
-| `payments` | Payment-provider or local-demo reference and status |
-| `tickets` | Signed QR value, ticket status, and redemption record |
-| `chat_messages` | Scoped concierge conversation history |
-
-## Booking state flow
-
-```text
-Customer selects tickets
-        │
-        ▼
-HOLD ── local demo payment ──► CONFIRMED ──► QR ticket ISSUED
-  │                                                   │
-  └── cancel unpaid reservation ──► CANCELLED         └── staff redemption ──► REDEEMED
-```
-
-The booking route locks the selected slot before it calculates remaining
-capacity and creates the hold. Cancellation locks the same slot before it
-returns capacity. Staff redemption locks the ticket before it changes its state.
-
-## Quick start
+## Run locally
 
 ### Prerequisites
 
-- Docker Desktop with the Linux container engine running
-- Git
+- [Git](https://git-scm.com/)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) with Linux containers enabled
 
-### Configure the environment
+### 1. Clone
 
-Create a local `.env` file from the sample:
+~~~powershell
+git clone https://github.com/adi1x7/TixBee2.0.git
+cd TixBee2.0
+~~~
 
-```powershell
+### 2. Configure environment variables
+
+Create a local configuration file:
+
+~~~powershell
 Copy-Item .env.example .env
-```
+~~~
 
-For the staff and administrator demo, set a strong local-only value in `.env`:
+At minimum, replace the placeholder secrets and configure local demo operations accounts:
 
-```env
+~~~env
+JWT_SECRET_KEY=replace-with-a-long-random-secret
+TICKET_SIGNING_SECRET=replace-with-a-different-long-random-secret
 DEMO_BOOTSTRAP_PASSWORD=choose-a-strong-demo-password
-DEMO_STAFF_EMAIL=staff@tixbee.local
-DEMO_ADMIN_EMAIL=admin@tixbee.local
-```
+DEMO_STAFF_EMAIL=staff@tixbee-demo.com
+DEMO_ADMIN_EMAIL=admin@tixbee-demo.com
+DEMO_STAFF_ATTRACTION_SLUG=visvesvaraya-museum
+~~~
 
-The bootstrap accounts are created only when `DEMO_BOOTSTRAP_PASSWORD` is set.
-Keep this setting out of deployed environments and never commit `.env`.
+Optional services:
 
-### Start the application
+- Set GEMINI_API_KEY to enable Concierge answers.
+- Set SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, and SMTP_FROM to send booking, reset, and cancellation emails.
+- Set UPI_PAYEE_ID and UPI_PAYEE_NAME for the UPI QR demonstration.
 
-```powershell
+Do not commit .env; it is already ignored by Git.
+
+### 3. Start TixBee
+
+~~~powershell
 docker compose up --build
-```
-
-Open these local endpoints:
+~~~
 
 | Service | Address |
 | --- | --- |
 | Customer application | http://localhost:3001 |
+| Customer login | http://localhost:3001/login |
+| Password reset | http://localhost:3001/forgot-password |
+| Staff and administrator desk | http://localhost:3001/operations |
 | API health check | http://localhost:8000/health |
 | Interactive API documentation | http://localhost:8000/docs |
-| Staff and admin operations | http://localhost:3001/operations |
 
-Stop the stack with:
+Stop the stack:
 
-```powershell
+~~~powershell
 docker compose down
-```
+~~~
 
-To reset local database data completely, use `docker compose down -v`. This
-removes the Docker volume containing PostgreSQL data.
+Remove local database data as well:
 
-## Demo walkthrough
+~~~powershell
+docker compose down -v
+~~~
 
-1. Open the customer application and choose an attraction.
-2. Pick an available date and time, then select ticket quantities.
-3. Create a customer account, reserve the visit, and complete the demo payment.
-4. Open **My bookings** to display the issued QR ticket.
-5. Sign in at `/operations` with `staff@tixbee.local` and the configured demo
-   password. Enter the ticket code and redeem it.
-6. Submit the same ticket code a second time to demonstrate one-time admission.
-7. Sign in as `admin@tixbee.local` to show slot capacity and open/close controls.
+## Demonstration walkthrough
 
-## API overview
+1. Open the customer application and select an attraction.
+2. Select a visit date, time slot, and ticket quantities.
+3. Register or sign in, then create the reservation hold.
+4. Select **Pay** to show the amount-specific UPI QR prompt.
+5. Open **My bookings** to view the issued QR pass.
+6. Sign in at /operations using the configured staff account and redeem the ticket.
+7. Redeem the same ticket again to demonstrate one-time admission protection.
+8. Sign in as the administrator to view all-site activity, slot controls, and the customer directory.
 
-All application endpoints are prefixed with `/api/v1`, except `/health` and
-`/docs`.
+## Core API routes
+
+Application endpoints use /api/v1, except /health and /docs.
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| `POST` | `/auth/register` | Create a customer account and JWT session |
-| `POST` | `/auth/login` | Sign in and receive a JWT session |
-| `GET` | `/attractions` | List published attractions with filters |
-| `GET` | `/attractions/{id}` | Read full attraction details |
-| `GET` | `/attractions/{id}/slots` | Read future available slots |
-| `POST` | `/bookings` | Create a locked, priced capacity hold |
-| `POST` | `/bookings/{id}/demo-pay` | Confirm a held booking in local demo mode |
-| `POST` | `/bookings/{id}/cancel` | Cancel an unpaid hold and restore capacity |
-| `GET` | `/me/bookings` | Read the authenticated customer's bookings |
-| `GET` | `/tickets/{code}/qr` | Render the customer's QR ticket as SVG |
-| `POST` | `/operations/tickets/{code}/redeem` | Redeem a ticket as staff or admin |
-| `GET` | `/operations/summary` | Read protected ticket-desk counts |
-| `GET` | `/operations/slots` | Read slots as an administrator |
-| `PATCH` | `/operations/slots/{id}` | Update slot capacity or active state as an administrator |
-
-Use the API documentation at `/docs` for request shapes, response schemas, and
-interactive testing.
-
-## Development commands
-
-### Frontend build
-
-```powershell
-cd frontend
-npm run build
-```
-
-### Backend syntax check
-
-```powershell
-python -m compileall backend/app
-```
-
-### Docker rebuild after dependency changes
-
-```powershell
-docker compose up --build -d api frontend
-```
+| POST | /auth/register | Create a customer account and session |
+| POST | /auth/login | Sign in and receive a JWT session |
+| POST | /auth/password-reset/request | Request a password reset |
+| POST | /auth/password-reset/confirm | Confirm a password reset |
+| GET | /attractions | List and filter published attractions |
+| GET | /attractions/{id} | Read attraction details |
+| GET | /attractions/{id}/slots | Read available future slots |
+| POST | /bookings | Create a capacity hold |
+| GET | /bookings/{id}/upi-qr | Generate an amount-specific UPI QR SVG |
+| POST | /bookings/{id}/demo-pay | Complete the local demonstration flow |
+| POST | /bookings/{id}/cancel-confirmed | Cancel an eligible confirmed booking |
+| GET | /me/bookings | Read the signed-in customer's bookings |
+| POST | /chat/messages | Send a Concierge message |
+| POST | /operations/tickets/{code}/redeem | Validate and redeem a ticket |
 
 ## Repository layout
 
-```text
+~~~text
 .
-├── backend/                 # FastAPI application and Alembic migrations
-├── frontend/                # Next.js user and operations interfaces
-├── docker-compose.yml       # Local frontend, API, PostgreSQL, and Redis stack
-├── Dockerfile.api           # Backend container image
-├── Dockerfile.frontend      # Frontend container image
-├── .env.example             # Safe configuration template
-└── PRD.md                   # Product requirements and planned future scope
-```
+|- backend/                       FastAPI application and Alembic migrations
+|  '- app/                        Models, routers, schemas, and services
+|- frontend/                      Next.js customer and operations interface
+|  '- public/images/attractions/  Local attraction images
+|- assets/                        Source attraction images
+|- docker-compose.yml             Local service definition
+|- Dockerfile.api                 Backend image
+|- Dockerfile.frontend            Frontend image
+|- .env.example                   Safe configuration template
+|- PRD.md                         Product planning material
+'- README.md                      Project documentation
+~~~
 
-## Security notes
+## Development checks
 
-- `.env` is ignored by Git. Do not commit passwords, JWT secrets, API keys, or
-  provider credentials.
-- Replace the development JWT secret before any deployment.
-- The demo account bootstrap exists only for local academic demonstration.
-- The local payment simulator must not be represented as a real payment gateway.
+~~~powershell
+# Frontend lint and production build
+cd frontend
+npm run lint
+npm run build
+
+# From the repository root
+python -m compileall backend/app
+~~~
+
+## Security and future-production notes
+
+- Passwords use Bcrypt hashing; sessions use expiring JWT tokens.
+- Protected APIs enforce roles, and staff ticket actions are restricted to their assigned site.
+- QR ticket signatures are verified before redemption.
+- The payment flow is intentionally a local academic demo, not a real payment-verification system.
+- A production version should add verified payment webhooks, rate limits, background hold expiry, production secret management, backups, and formal accessibility/security testing.
 
 ## License
 
-This repository is an academic project. Add a license before using it as a
-public production product.
+This is an academic project. Add an explicit license before using it in a production or commercial context.

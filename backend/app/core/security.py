@@ -32,7 +32,12 @@ def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bear
     if not credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in is required.")
     try:
-        payload = jwt.decode(credentials.credentials, get_settings().jwt_secret_key, algorithms=[get_settings().jwt_algorithm])
+        payload = jwt.decode(
+            credentials.credentials,
+            get_settings().jwt_secret_key,
+            algorithms=[get_settings().jwt_algorithm],
+            options={"require": ["sub", "role", "exp"]},
+        )
         user_id = payload.get("sub")
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Your session is invalid or expired.") from exc
@@ -40,6 +45,22 @@ def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bear
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Your account is unavailable.")
     return user
+
+
+def optional_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme), db: Session = Depends(get_db)) -> User | None:
+    """Return a valid signed-in user, while allowing public concierge questions."""
+    if not credentials:
+        return None
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            get_settings().jwt_secret_key,
+            algorithms=[get_settings().jwt_algorithm],
+            options={"require": ["sub", "role", "exp"]},
+        )
+    except jwt.PyJWTError:
+        return None
+    return db.scalar(select(User).where(User.id == payload.get("sub"), User.is_active.is_(True)))
 
 
 def staff_user(user: User = Depends(current_user)) -> User:

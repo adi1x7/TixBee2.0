@@ -11,13 +11,22 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "change-me-before-deployment"
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60 * 24
+    password_reset_minutes: int = 15
+    ticket_signing_secret: str | None = None
+    ticket_validity_days: int = 30
     booking_hold_minutes: int = 10
+    max_active_holds_per_user: int = 3
+    max_tickets_per_booking: int = 10
     gemini_api_key: str | None = None
-    gemini_model: str = "gemini-3.7-flash"
-    gemini_fallback_model: str = "gemini-3.6-flash"
+    gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_fallback_model: str = "gemini-3.5-flash-lite"
+    concierge_timeout_ms: int = 10000
+    concierge_history_messages: int = 4
     razorpay_key_id: str | None = None
     razorpay_key_secret: str | None = None
     razorpay_webhook_secret: str | None = None
+    upi_payee_id: str = "arupiop@axl"
+    upi_payee_name: str = "TixBee"
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None
@@ -25,8 +34,14 @@ class Settings(BaseSettings):
     smtp_from: str = "bookings@tixbee.local"
     frontend_origin: str = "http://localhost:3000"
     demo_bootstrap_password: str | None = None
-    demo_staff_email: str = "staff@tixbee.local"
-    demo_admin_email: str = "admin@tixbee.local"
+    demo_staff_email: str = "staff@tixbee-demo.com"
+    demo_admin_email: str = "admin@tixbee-demo.com"
+    demo_staff_attraction_slug: str = "visvesvaraya-museum"
+
+    @property
+    def ticket_signing_key(self) -> str:
+        """Keep ticket signatures separate from login-session signatures."""
+        return self.ticket_signing_secret or f"{self.jwt_secret_key}:tickets"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

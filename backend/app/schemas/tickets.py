@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, datetime, time
 from pydantic import BaseModel
 
 
@@ -13,6 +13,14 @@ class MyBookingOut(BaseModel):
     total_amount: int
     ticket_code: str | None = None
     ticket_status: str | None = None
+    cancellation_deadline: datetime | None = None
+
+
+class CancellationOut(BaseModel):
+    booking_reference: str
+    refund_amount: int
+    refund_status: str
+    email_delivery_status: str
 
 
 class TicketVerificationOut(BaseModel):

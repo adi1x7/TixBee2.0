@@ -1,10 +1,11 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { sendConciergeMessage } from "@/lib/api";
+import { sendConciergeMessage, type Session } from "@/lib/api";
 
 type Message = { role: "visitor" | "assistant"; text: string };
 const intro = "Tell me what kind of day you’d like to have. I’ll help you find the right place.";
+const suggestions = ["Help me choose a place", "What are my bookings?", "What should I know before visiting?"];
 
 export function Concierge({ attractionId }: { attractionId?: string }) {
   const [open, setOpen] = useState(false);
@@ -13,14 +14,15 @@ export function Concierge({ attractionId }: { attractionId?: string }) {
   const [waiting, setWaiting] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   function sessionId() { const key = "tixbee-concierge-session"; const existing = window.localStorage.getItem(key); if (existing) return existing; const next = crypto.randomUUID(); window.localStorage.setItem(key, next); return next; }
+  function accessToken() { try { return (JSON.parse(window.localStorage.getItem("tixbee-session") || "null") as Session | null)?.access_token; } catch { return undefined; } }
   async function submit(event: FormEvent) {
     event.preventDefault(); const message = draft.trim(); if (!message || waiting) return;
     setMessages((current) => [...current, { role: "visitor", text: message }]); setDraft(""); setWaiting(true); setUnavailable(false);
-    try { const reply = await sendConciergeMessage(sessionId(), message, attractionId); if (reply.status !== "available" || !reply.answer) { setUnavailable(true); } else { setMessages((current) => [...current, { role: "assistant", text: reply.answer! }]); } }
+    try { const reply = await sendConciergeMessage(sessionId(), message, attractionId, accessToken()); if (reply.status !== "available" || !reply.answer) { setUnavailable(true); } else { setMessages((current) => [...current, { role: "assistant", text: reply.answer! }]); } }
     catch { setUnavailable(true); } finally { setWaiting(false); }
   }
   return <aside className={open ? "concierge open" : "concierge"} aria-label="TixBee Concierge">
-    {open ? <section className="concierge-panel"><header><div><span className="concierge-dot" /> TixBee Concierge</div><button onClick={() => setOpen(false)} aria-label="Close concierge">×</button></header><div className="chat-thread">{messages.map((message, index) => <p className={message.role} key={`${message.role}-${index}`}>{message.text}</p>)}{waiting ? <p className="assistant typing">Thinking…</p> : null}{unavailable ? <p className="chat-notice">The concierge is temporarily unavailable. You can still explore and book from the collection.</p> : null}</div><form onSubmit={submit}><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask about a visit…" aria-label="Message concierge" /><button type="submit" disabled={waiting || !draft.trim()}>Send</button></form></section> : null}
+    {open ? <section className="concierge-panel"><header><div><span className="concierge-dot" /> TixBee Concierge</div><button onClick={() => setOpen(false)} aria-label="Close concierge">×</button></header><div className="chat-thread">{messages.length === 1 ? <div className="chat-suggestions" aria-label="Suggested questions">{suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => setDraft(suggestion)}>{suggestion}</button>)}</div> : null}{messages.map((message, index) => <p className={message.role} key={`${message.role}-${index}`}>{message.text}</p>)}{waiting ? <p className="assistant typing">Thinking…</p> : null}{unavailable ? <p className="chat-notice">The concierge is temporarily unavailable. You can still explore and book from the collection.</p> : null}</div><form onSubmit={submit}><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask about a visit or your bookings…" aria-label="Message concierge" /><button type="submit" disabled={waiting || !draft.trim()}>Send</button></form></section> : null}
     <button className="concierge-launch" onClick={() => setOpen((value) => !value)}>{open ? "Close" : "Ask TixBee"}<span>✦</span></button>
   </aside>;
 }
